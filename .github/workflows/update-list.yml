@@ -1,35 +1,24 @@
+name: Auto Update PDF List
 on:
 push:
-branches: [ main ]
+branches: [ main, master ]
 paths:
-- 'partitur/' # Hanya berjalan jika ada perubahan di folder partitur
+- 'partitur/'
 permissions:
 contents: write
 jobs:
 update-list:
 runs-on: ubuntu-latest
 steps:
-- name: Mengambil data repository
+- name: Checkout repository
 uses: actions/checkout@v4
-- name: Membaca folder partitur dan membuat list_pdf.json
+- name: Generate list_pdf.json
 run: |
-python -c '
-import os, json
-folder = "partitur"
-# Cari semua file berakhiran .pdf
-if os.path.exists(folder):
-files = ["partitur/" + f for f in os.listdir(folder) if f.lower().endswith(".pdf")]
-else:
-files = []
-# Simpan sebagai JSON
-with open("list_pdf.json", "w") as f:
-json.dump(files, f)
-'
-- name: Menyimpan list_pdf.json kembali ke GitHub
+python3 -c 'import os, json; files = ["partitur/" + f for f in os.listdir("partitur") if f.lower().endswith(".pdf")] if os.path.exists("partitur") else []; f = open("list_pdf.json", "w"); json.dump(files, f); f.close()'
+- name: Commit and push changes
 run: |
 git config --local user.email "action@github.com"
 git config --local user.name "GitHub Action Bot"
 git add list_pdf.json
-# Jika ada perubahan, simpan. Jika tidak ada, abaikan.
-git commit -m "Auto-generate PDF list" || echo "Tidak ada perubahan daftar lagu"
+git commit -m "Auto-generate PDF list" || echo "No changes to commit"
 git push
