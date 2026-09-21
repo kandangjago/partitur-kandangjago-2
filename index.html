@@ -1,0 +1,596 @@
+```html
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=no">
+    <title>PARTITUR KANDANGJAGO</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    
+    <style>
+        :root {
+            --primary: #1e293b;
+            --accent: #dc2626;
+        }
+        
+        body {
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+            overflow: hidden; 
+            background-color: #f8fafc;
+            touch-action: none; 
+        }
+
+        img, canvas {
+            -webkit-user-drag: none;
+            user-select: none;
+            pointer-events: auto;
+        }
+
+        @media print {
+            body { display: none !important; }
+        }
+
+        .hidden-view { display: none !important; }
+
+        #pdf-container {
+            position: relative;
+            width: 100%;
+            height: calc(100vh - 120px); 
+            overflow: hidden; 
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #e2e8f0;
+        }
+
+        #pdf-canvas {
+            transform-origin: center center;
+            transition: transform 0.1s ease-out; 
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        .no-transition {
+            transition: none !important;
+        }
+    </style>
+</head>
+<body class="text-slate-800 antialiased font-sans flex flex-col h-screen" oncontextmenu="return false;">
+
+    <!-- SCREEN 1: Home / Search -->
+    <div id="screen-home" class="flex flex-col h-full w-full max-w-3xl mx-auto bg-white shadow-xl">
+        <header class="bg-slate-900 text-white p-4 shadow-md flex justify-between items-center z-10">
+            <div>
+                <h1 class="text-xl font-bold tracking-wider text-red-500">KANDANG<span class="text-white">JAGO</span></h1>
+                <p class="text-xs text-slate-400">Pustaka Partitur Koor & Nyanyian</p>
+            </div>
+            <button onclick="app.showPlaylist()" class="bg-slate-800 hover:bg-slate-700 text-white p-2 px-4 rounded-lg flex items-center gap-2 transition">
+                <i class="fa-solid fa-book-bookmark text-red-400"></i>
+                <span class="hidden sm:inline">Playlist</span>
+            </button>
+        </header>
+
+        <div class="p-4 border-b border-slate-200 bg-slate-50">
+            <div class="relative">
+                <i class="fa-solid fa-search absolute left-3 top-3 text-slate-400"></i>
+                <input type="text" id="search-input" placeholder="Cari judul lagu..." 
+                    class="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition"
+                    oninput="app.filterSongs()">
+            </div>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-4" id="song-list-container">
+            <div id="loading-indicator" class="text-center py-10 text-slate-500">
+                <i class="fa-solid fa-spinner fa-spin text-3xl mb-3"></i>
+                <p>Memuat daftar partitur...</p>
+            </div>
+            <ul id="song-list" class="space-y-2 hidden">
+                <!-- List diinjeksi JS -->
+            </ul>
+        </div>
+    </div>
+
+    <!-- SCREEN 2: Playlist -->
+    <div id="screen-playlist" class="hidden-view flex flex-col h-full w-full max-w-3xl mx-auto bg-white shadow-xl">
+        <header class="bg-slate-900 text-white p-4 shadow-md flex items-center gap-3 z-10">
+            <button onclick="app.showHome()" class="text-slate-300 hover:text-white p-2">
+                <i class="fa-solid fa-arrow-left"></i>
+            </button>
+            <h1 class="text-xl font-bold flex-1">Playlist Saya</h1>
+        </header>
+        <div class="flex-1 overflow-y-auto p-4">
+            <div id="playlist-empty" class="text-center py-10 text-slate-400 hidden">
+                <i class="fa-regular fa-folder-open text-5xl mb-3"></i>
+                <p>Playlist Anda masih kosong.</p>
+                <button onclick="app.showHome()" class="mt-4 text-red-500 underline text-sm">Cari lagu</button>
+            </div>
+            <ul id="playlist-list" class="space-y-2">
+            </ul>
+        </div>
+    </div>
+
+    <!-- SCREEN 3: Viewer -->
+    <div id="screen-viewer" class="hidden-view flex flex-col h-full w-full bg-slate-900 relative">
+        <header class="bg-slate-900 text-white p-3 shadow-lg flex items-center justify-between z-20">
+            <button onclick="app.closeViewer()" class="text-slate-300 hover:text-white p-2">
+                <i class="fa-solid fa-arrow-left text-xl"></i>
+            </button>
+            <h2 id="viewer-title" class="font-semibold text-center flex-1 mx-2 truncate text-sm sm:text-base">Judul Lagu</h2>
+            <button id="btn-toggle-playlist" onclick="app.toggleCurrentPlaylist()" class="text-slate-300 hover:text-red-400 p-2 transition">
+                <i class="fa-regular fa-heart text-xl" id="icon-playlist"></i>
+            </button>
+        </header>
+
+        <div id="pdf-container">
+            <canvas id="pdf-canvas"></canvas>
+            <div id="pdf-loading" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-200 bg-opacity-80 z-10">
+                <i class="fa-solid fa-circle-notch fa-spin text-4xl text-slate-800 mb-3"></i>
+                <span class="font-medium text-slate-800">Merender Partitur...</span>
+            </div>
+        </div>
+
+        <footer class="bg-slate-900 text-white p-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] flex justify-between items-center z-20">
+            <button onclick="app.prevPage()" class="bg-slate-800 hover:bg-slate-700 p-3 rounded-full active:scale-95 transition" id="btn-prev">
+                <i class="fa-solid fa-chevron-left"></i>
+            </button>
+            <div class="text-center">
+                <span id="page-num" class="font-bold text-lg">1</span> 
+                <span class="text-slate-400 text-sm">/</span> 
+                <span id="page-count" class="text-slate-400 text-sm">1</span>
+            </div>
+            <button onclick="app.nextPage()" class="bg-slate-800 hover:bg-slate-700 p-3 rounded-full active:scale-95 transition" id="btn-next">
+                <i class="fa-solid fa-chevron-right"></i>
+            </button>
+        </footer>
+        
+        <div id="hint-overlay" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-black bg-opacity-70 text-white p-4 rounded-xl text-center pointer-events-none transition-opacity duration-500 opacity-0 z-30">
+            <i class="fa-solid fa-arrows-up-down-left-right text-3xl mb-2"></i>
+            <p class="text-sm">Cubit untuk Zoom<br>Sentuh tepi / usap ganti hal</p>
+        </div>
+    </div>
+
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+        const app = {
+            songs: [],
+            playlist: JSON.parse(localStorage.getItem('kandangjago_playlist')) || [],
+            currentPdfDoc: null,
+            pageNum: 1,
+            pageRendering: false,
+            pageNumPending: null,
+            scale: 2.0,
+            canvas: document.getElementById('pdf-canvas'),
+            ctx: document.getElementById('pdf-canvas').getContext('2d'),
+            currentSong: null,
+            
+            displayScale: 1,
+            minScale: 1,
+            maxScale: 3,
+            panX: 0,
+            panY: 0,
+            isDragging: false,
+            startX: 0,
+            startY: 0,
+            lastPanX: 0,
+            lastPanY: 0,
+            initialDistance: 0,
+            initialScale: 1,
+            touchStartTime: 0,
+
+            init: async function() {
+                this.setupTouchEvents();
+                this.setupSecurity();
+                await this.fetchSongsFromServer();
+                this.renderSongList(this.songs);
+                this.updatePlaylistCount();
+            },
+
+            fetchSongsFromServer: async function() {
+                try {
+                    // PERUBAHAN UNTUK GITHUB: Mengambil data dari file list_pdf.json (dibuat otomatis oleh GitHub Actions)
+                    const response = await fetch('list_pdf.json');
+                    
+                    if (!response.ok) {
+                        throw new Error('Gagal mengakses list_pdf.json. Mungkin robot GitHub sedang bekerja atau belum ada file PDF.');
+                    }
+                    
+                    const filePaths = await response.json();
+
+                    this.songs = filePaths.map(path => {
+                        const fileName = path.split('/').pop();
+                        const title = fileName.replace(/\.[^/.]+$/, "");
+                        return {
+                            id: btoa(title),
+                            title: title,
+                            url: path 
+                        };
+                    });
+
+                    this.songs.sort((a, b) => a.title.localeCompare(b.title));
+
+                    document.getElementById('loading-indicator').classList.add('hidden');
+                    document.getElementById('song-list').classList.remove('hidden');
+
+                } catch (error) {
+                    console.error(error);
+                    document.getElementById('loading-indicator').innerHTML = `
+                        <div class="text-red-500 py-6">
+                            <i class="fa-solid fa-triangle-exclamation text-4xl mb-3"></i>
+                            <p class="font-bold">Gagal memuat partitur.</p>
+                            <p class="text-xs mt-2 text-slate-500 px-4">Jika Anda baru saja meng-upload PDF di GitHub, tunggu sekitar 30 detik lalu refresh halaman ini.</p>
+                        </div>
+                    `;
+                }
+            },
+
+            renderSongList: function(list, containerId = 'song-list', isPlaylist = false) {
+                const container = document.getElementById(containerId);
+                container.innerHTML = '';
+
+                if (list.length === 0) {
+                    container.innerHTML = `<li class="text-center text-slate-400 py-4">${isPlaylist ? '' : 'Belum ada partitur di folder.'}</li>`;
+                    return;
+                }
+
+                list.forEach(song => {
+                    const li = document.createElement('li');
+                    li.className = "bg-white border border-slate-200 rounded-xl p-3 flex justify-between items-center shadow-sm hover:shadow-md transition cursor-pointer active:scale-[0.98]";
+                    li.onclick = () => this.openViewer(song);
+                    
+                    const isFavorited = this.playlist.some(s => s.id === song.id);
+                    const iconColor = isFavorited ? 'text-red-500' : 'text-slate-300';
+                    const heartIcon = isFavorited ? 'fa-solid' : 'fa-regular';
+
+                    li.innerHTML = `
+                        <div class="flex items-center gap-4 flex-1 overflow-hidden">
+                            <div class="bg-slate-100 p-3 rounded-lg text-slate-600">
+                                <i class="fa-solid fa-file-pdf"></i>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <h3 class="font-semibold text-slate-800 truncate">${song.title}</h3>
+                                <p class="text-xs text-slate-400">PDF Document</p>
+                            </div>
+                        </div>
+                        <button class="p-3 z-10" onclick="event.stopPropagation(); app.togglePlaylist('${song.id}')">
+                            <i class="${heartIcon} fa-heart ${iconColor} text-lg transition"></i>
+                        </button>
+                    `;
+                    container.appendChild(li);
+                });
+            },
+
+            filterSongs: function() {
+                const query = document.getElementById('search-input').value.toLowerCase();
+                const filtered = this.songs.filter(s => s.title.toLowerCase().includes(query));
+                this.renderSongList(filtered);
+            },
+
+            togglePlaylist: function(songId) {
+                const index = this.playlist.findIndex(s => s.id === songId);
+                if (index > -1) {
+                    this.playlist.splice(index, 1);
+                } else {
+                    const song = this.songs.find(s => s.id === songId);
+                    if (song) this.playlist.push(song);
+                }
+                
+                localStorage.setItem('kandangjago_playlist', JSON.stringify(this.playlist));
+                
+                this.filterSongs();
+                if (!document.getElementById('screen-playlist').classList.contains('hidden-view')) {
+                    this.renderPlaylist();
+                }
+                
+                if (this.currentSong && this.currentSong.id === songId) {
+                    this.updateViewerPlaylistIcon();
+                }
+            },
+
+            toggleCurrentPlaylist: function() {
+                if (this.currentSong) {
+                    this.togglePlaylist(this.currentSong.id);
+                }
+            },
+
+            updateViewerPlaylistIcon: function() {
+                const isFavorited = this.playlist.some(s => s.id === this.currentSong.id);
+                const icon = document.getElementById('icon-playlist');
+                if (isFavorited) {
+                    icon.classList.remove('fa-regular');
+                    icon.classList.add('fa-solid', 'text-red-500');
+                } else {
+                    icon.classList.remove('fa-solid', 'text-red-500');
+                    icon.classList.add('fa-regular');
+                }
+            },
+
+            showHome: function() {
+                document.getElementById('screen-home').classList.remove('hidden-view');
+                document.getElementById('screen-playlist').classList.add('hidden-view');
+                document.getElementById('screen-viewer').classList.add('hidden-view');
+                this.filterSongs(); 
+            },
+
+            showPlaylist: function() {
+                document.getElementById('screen-home').classList.add('hidden-view');
+                document.getElementById('screen-playlist').classList.remove('hidden-view');
+                document.getElementById('screen-viewer').classList.add('hidden-view');
+                this.renderPlaylist();
+            },
+
+            renderPlaylist: function() {
+                const emptyMsg = document.getElementById('playlist-empty');
+                if (this.playlist.length === 0) {
+                    emptyMsg.classList.remove('hidden');
+                    document.getElementById('playlist-list').innerHTML = '';
+                } else {
+                    emptyMsg.classList.add('hidden');
+                    this.playlist.sort((a, b) => a.title.localeCompare(b.title));
+                    this.renderSongList(this.playlist, 'playlist-list', true);
+                }
+            },
+
+            updatePlaylistCount: function() {},
+
+            openViewer: function(song) {
+                this.currentSong = song;
+                document.getElementById('screen-home').classList.add('hidden-view');
+                document.getElementById('screen-playlist').classList.add('hidden-view');
+                document.getElementById('screen-viewer').classList.remove('hidden-view');
+                
+                document.getElementById('viewer-title').textContent = song.title;
+                this.updateViewerPlaylistIcon();
+                
+                document.getElementById('pdf-loading').classList.remove('hidden');
+                
+                this.pageNum = 1;
+                this.resetZoomAndPan();
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+                const urlToLoad = song.url;
+                
+                pdfjsLib.getDocument(urlToLoad).promise.then(pdfDoc_ => {
+                    this.currentPdfDoc = pdfDoc_;
+                    document.getElementById('page-count').textContent = this.currentPdfDoc.numPages;
+                    
+                    const btnPrev = document.getElementById('btn-prev');
+                    const btnNext = document.getElementById('btn-next');
+                    if (this.currentPdfDoc.numPages <= 1) {
+                        btnPrev.style.visibility = 'hidden';
+                        btnNext.style.visibility = 'hidden';
+                    } else {
+                        btnPrev.style.visibility = 'visible';
+                        btnNext.style.visibility = 'visible';
+                    }
+
+                    this.renderPage(this.pageNum);
+                    
+                    const hint = document.getElementById('hint-overlay');
+                    hint.classList.remove('opacity-0');
+                    setTimeout(() => hint.classList.add('opacity-0'), 3000);
+                    
+                }).catch(err => {
+                    console.error('Error loading PDF', err);
+                    document.getElementById('pdf-loading').innerHTML = `
+                        <i class="fa-solid fa-triangle-exclamation text-4xl text-red-500 mb-3"></i>
+                        <span class="font-medium text-white">Gagal memuat partitur.</span>
+                        <span class="text-sm text-slate-400 mt-2 text-center px-4">Pastikan URL file benar dan dapat diakses.</span>
+                    `;
+                });
+            },
+
+            closeViewer: function() {
+                this.currentPdfDoc = null;
+                this.currentSong = null;
+                this.showHome();
+            },
+
+            renderPage: function(num) {
+                this.pageRendering = true;
+                
+                this.currentPdfDoc.getPage(num).then(page => {
+                    const viewport = page.getViewport({ scale: this.scale });
+                    this.canvas.height = viewport.height;
+                    this.canvas.width = viewport.width;
+
+                    const renderContext = {
+                        canvasContext: this.ctx,
+                        viewport: viewport
+                    };
+                    
+                    const renderTask = page.render(renderContext);
+
+                    renderTask.promise.then(() => {
+                        this.pageRendering = false;
+                        document.getElementById('pdf-loading').classList.add('hidden');
+                        if (this.pageNumPending !== null) {
+                            this.renderPage(this.pageNumPending);
+                            this.pageNumPending = null;
+                        }
+                    });
+                });
+
+                document.getElementById('page-num').textContent = num;
+            },
+
+            queueRenderPage: function(num) {
+                if (this.pageRendering) {
+                    this.pageNumPending = num;
+                } else {
+                    document.getElementById('pdf-loading').classList.remove('hidden');
+                    this.renderPage(num);
+                }
+            },
+
+            prevPage: function() {
+                if (this.pageNum <= 1) return;
+                this.pageNum--;
+                this.resetZoomAndPan();
+                this.queueRenderPage(this.pageNum);
+            },
+
+            nextPage: function() {
+                if (this.pageNum >= this.currentPdfDoc.numPages) return;
+                this.pageNum++;
+                this.resetZoomAndPan();
+                this.queueRenderPage(this.pageNum);
+            },
+
+            setupTouchEvents: function() {
+                const container = document.getElementById('pdf-container');
+
+                container.addEventListener('touchstart', (e) => this.handleTouchStart(e), {passive: false});
+                container.addEventListener('touchmove', (e) => this.handleTouchMove(e), {passive: false});
+                container.addEventListener('touchend', (e) => this.handleTouchEnd(e));
+                
+                let lastTap = 0;
+                container.addEventListener('touchend', (e) => {
+                    const currentTime = new Date().getTime();
+                    const tapLength = currentTime - lastTap;
+                    if (tapLength < 500 && tapLength > 0) {
+                        e.preventDefault();
+                        this.resetZoomAndPan();
+                    }
+                    lastTap = currentTime;
+                });
+            },
+
+            handleTouchStart: function(e) {
+                if (!this.currentPdfDoc) return;
+                this.canvas.classList.add('no-transition');
+
+                if (e.touches.length === 2) {
+                    e.preventDefault();
+                    this.isDragging = false;
+                    this.initialDistance = this.getDistance(e.touches[0], e.touches[1]);
+                    this.initialScale = this.displayScale;
+                } else if (e.touches.length === 1) {
+                    this.touchStartTime = Date.now();
+                    this.isDragging = true;
+                    this.startX = e.touches[0].clientX;
+                    this.startY = e.touches[0].clientY;
+                }
+            },
+
+            handleTouchMove: function(e) {
+                if (!this.currentPdfDoc) return;
+                e.preventDefault();
+
+                if (e.touches.length === 2) {
+                    const currentDistance = this.getDistance(e.touches[0], e.touches[1]);
+                    let newScale = this.initialScale * (currentDistance / this.initialDistance);
+                    
+                    if (newScale < this.minScale) newScale = this.minScale;
+                    if (newScale > this.maxScale) newScale = this.maxScale;
+                    
+                    this.displayScale = newScale;
+                    this.applyTransform();
+
+                } else if (e.touches.length === 1 && this.isDragging) {
+                    if (this.displayScale > 1) {
+                        const dx = e.touches[0].clientX - this.startX;
+                        const dy = e.touches[0].clientY - this.startY;
+                        
+                        this.panX = this.lastPanX + dx;
+                        this.panY = this.lastPanY + dy;
+                        
+                        this.limitPan();
+                        this.applyTransform();
+                    }
+                }
+            },
+
+            handleTouchEnd: function(e) {
+                this.canvas.classList.remove('no-transition');
+                
+                if (e.changedTouches.length === 1 && this.displayScale === 1) {
+                    const endX = e.changedTouches[0].clientX;
+                    const diffX = endX - this.startX;
+                    const touchDuration = Date.now() - this.touchStartTime;
+
+                    if (Math.abs(diffX) > 70 && touchDuration < 500) {
+                        if (diffX > 0) {
+                            this.prevPage(); 
+                        } else {
+                            this.nextPage(); 
+                        }
+                    } 
+                    else if (Math.abs(diffX) < 10 && touchDuration < 300) {
+                        const screenWidth = window.innerWidth;
+                        if (endX < screenWidth * 0.25) {
+                            this.prevPage(); 
+                        } else if (endX > screenWidth * 0.75) {
+                            this.nextPage(); 
+                        }
+                    }
+                }
+
+                if (this.isDragging && this.displayScale > 1) {
+                    this.lastPanX = this.panX;
+                    this.lastPanY = this.panY;
+                }
+                
+                this.isDragging = false;
+            },
+
+            getDistance: function(touch1, touch2) {
+                const dx = touch1.clientX - touch2.clientX;
+                const dy = touch1.clientY - touch2.clientY;
+                return Math.sqrt(dx * dx + dy * dy);
+            },
+
+            applyTransform: function() {
+                this.canvas.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${this.displayScale})`;
+            },
+
+            resetZoomAndPan: function() {
+                this.displayScale = this.minScale;
+                this.panX = 0;
+                this.panY = 0;
+                this.lastPanX = 0;
+                this.lastPanY = 0;
+                this.applyTransform();
+            },
+
+            limitPan: function() {
+                const containerRect = document.getElementById('pdf-container').getBoundingClientRect();
+                const maxPanX = (containerRect.width * this.displayScale - containerRect.width) / 2;
+                const maxPanY = (containerRect.height * this.displayScale - containerRect.height) / 2;
+
+                if (this.panX > maxPanX) this.panX = maxPanX;
+                if (this.panX < -maxPanX) this.panX = -maxPanX;
+                if (this.panY > maxPanY) this.panY = maxPanY;
+                if (this.panY < -maxPanY) this.panY = -maxPanY;
+            },
+
+            setupSecurity: function() {
+                window.addEventListener('keyup', (e) => {
+                    if (e.key === 'PrintScreen' || e.keyCode === 44) {
+                        document.body.style.display = 'none';
+                        setTimeout(() => {
+                            document.body.style.display = 'block';
+                        }, 2000);
+                    }
+                });
+
+                document.addEventListener('dragstart', (e) => e.preventDefault());
+            }
+        };
+
+        window.addEventListener('DOMContentLoaded', () => {
+            app.init();
+        });
+
+    </script>
+</body>
+</html>
+```
