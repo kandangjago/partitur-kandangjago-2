@@ -1,5 +1,4 @@
 name: Auto Update PDF List
-Robot ini akan berjalan secara otomatis setiap kali Anda melakukan push (upload/hapus) ke cabang 'main'
 on:
 push:
 branches: [ main ]
