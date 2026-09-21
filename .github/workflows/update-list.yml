@@ -1,28 +1,32 @@
 name: Auto Update PDF List
 on:
-push:
-branches:
-- main
-- master
-paths:
-- 'partitur/'
-workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'partitur/**'
+  workflow_dispatch:
+
 permissions:
-contents: write
+  contents: write
+
 jobs:
-update-list:
-runs-on: ubuntu-latest
-steps:
-- name: Checkout repository
-uses: actions/checkout@v4
-with:
-fetch-depth: 0
-- name: Generate list_pdf.json
-run: |
-mkdir -p partitur
-find partitur -type f -iname "*.pdf" | jq -R -s -c 'split("\n") | map(select(length > 0))' > list_pdf.json
-- name: Commit and Push Changes
-uses: stefanzweifel/git-auto-commit-action@v5
-with:
-commit_message: "Update otomatis daftar partitur"
-file_pattern: "list_pdf.json",
+  update-list:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Generate list_pdf.json
+        run: |
+          mkdir -p partitur
+          find partitur -type f -iname "*.pdf" | sort | jq -R -s -c 'split("\n") | map(select(length > 0))' > list_pdf.json
+          echo "Total PDF: $(jq length list_pdf.json)"
+          cat list_pdf.json
+
+      - name: Commit and Push Changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update daftar partitur [skip ci]"
+          file_pattern: "list_pdf.json"
