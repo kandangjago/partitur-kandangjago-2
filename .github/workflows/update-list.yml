@@ -1,28 +1,45 @@
-name: Auto Update PDF List
+name: Generate Partitur Manifest
 on:
-push:
-branches:
-- main
-- master
-paths:
-- 'partitur/'
-workflow_dispatch:
-permissions:
-contents: write
+  push:
+    paths:
+      - 'partitur/**'
+      - 'partitur.json'
+  workflow_dispatch:
+
 jobs:
-update-list:
-runs-on: ubuntu-latest
-steps:
-- name: Checkout repository
-uses: actions/checkout@v4
-with:
-fetch-depth: 0
-- name: Generate list_pdf.json
-run: |
-mkdir -p partitur
-find partitur -type f -iname "*.pdf" | jq -R -s -c 'split("\n") | map(select(length > 0))' > list_pdf.json
-- name: Commit and Push Changes
-uses: stefanzweifel/git-auto-commit-action@v5
-with:
-commit_message: "Update otomatis daftar partitur"
-file_pattern: "list_pdf.json"
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Generate partitur.json
+        run: |
+          python - << 'PY'
+          import os, json, pathlib
+          folder = pathlib.Path('partitur')
+          if not folder.exists():
+              folder.mkdir(parents=True, exist_ok=True)
+          files = sorted([f.name for f in folder.glob('*.pdf') if f.is_file()])
+          data = [{"title": os.path.splitext(f)[0].replace('_',' ').replace('-',' ').strip(), "file": f} for f in files]
+          # urut abjad Indonesia
+          data = sorted(data, key=lambda x: x['title'].lower())
+          pathlib.Path('partitur.json').write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding='utf-8')
+          print(f"Generated {len(data)} entries -> partitur.json")
+          print(data)
+          PY
+
+      - name: Commit manifest
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add partitur.json
+          git diff --staged --quiet || (git commit -m "Auto update partitur.json - $(date)" && git push)
+          
